@@ -103,6 +103,10 @@ final class OpensearchSearcher implements SearcherInterface
             ];
         }
 
+        if (null !== $search->distinct) {
+            $body['collapse']['field'] = $this->getFilterField($search->index, $search->distinct);
+        }
+
         $searchResult = $this->client->search([
             'index' => $search->index->name,
             'body' => $body,
