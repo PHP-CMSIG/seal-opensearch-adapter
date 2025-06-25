@@ -22,6 +22,7 @@ use CmsIg\Seal\Search\Result;
 use CmsIg\Seal\Search\Search;
 use OpenSearch\Client;
 use OpenSearch\Common\Exceptions\Missing404Exception;
+use OpenSearch\Common\Exceptions\OpenSearchException;
 
 final class OpensearchSearcher implements SearcherInterface
 {
@@ -36,6 +37,17 @@ final class OpensearchSearcher implements SearcherInterface
                 'longitude' => 'lon',
             ],
         );
+    }
+
+    public function count(Index $index): int
+    {
+        try {
+            return $this->client->count([
+                'index' => $index->name,
+            ])['count'] ?? 0;
+        } catch (OpenSearchException) {
+            return 0;
+        }
     }
 
     public function search(Search $search): Result
