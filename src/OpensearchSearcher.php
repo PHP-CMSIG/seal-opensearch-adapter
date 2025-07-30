@@ -18,6 +18,9 @@ use CmsIg\Seal\Marshaller\Marshaller;
 use CmsIg\Seal\Schema\Field;
 use CmsIg\Seal\Schema\Index;
 use CmsIg\Seal\Search\Condition;
+use CmsIg\Seal\Search\Facet\AbstractFacet;
+use CmsIg\Seal\Search\Facet\CountFacet;
+use CmsIg\Seal\Search\Facet\MinMaxFacet;
 use CmsIg\Seal\Search\Result;
 use CmsIg\Seal\Search\Search;
 use OpenSearch\Client;
@@ -119,6 +122,16 @@ final class OpensearchSearcher implements SearcherInterface
             $body['collapse']['field'] = $this->getFilterField($search->index, $search->distinct);
         }
 
+        foreach ($search->facets as $facet) {
+            if ($facet instanceof CountFacet) {
+                $body['aggs'][$facet->field . '_count']['terms']['field'] = $this->getFilterField($search->index, $facet->field);
+            }
+            if ($facet instanceof MinMaxFacet) {
+                $body['aggs'][$facet->field . '_min']['min']['field'] = $this->getFilterField($search->index, $facet->field);
+                $body['aggs'][$facet->field . '_max']['max']['field'] = $this->getFilterField($search->index, $facet->field);
+            }
+        }
+
         $searchResult = $this->client->search([
             'index' => $search->index->name,
             'body' => $body,
@@ -127,6 +140,7 @@ final class OpensearchSearcher implements SearcherInterface
         return new Result(
             $this->hitsToDocuments($search->index, $searchResult['hits']['hits'], $search->highlightFields),
             $searchResult['hits']['total']['value'],
+            $this->formatFacets($searchResult['aggregations'] ?? [], $search->facets),
         );
     }
 
@@ -235,5 +249,39 @@ final class OpensearchSearcher implements SearcherInterface
                 $conjunctive ? 'must' : 'should' => $filterQueries,
             ],
         ];
+    }
+
+    /**
+     * @param array<string, array{
+     *          value?: float|null,
+     *          buckets?: array<array{
+     *              key: string|int,
+     *              key_as_string?: string,
+     *              doc_count: int
+     *          }>
+     *       }> $aggregations
+     * @param array<AbstractFacet> $facets
+     *
+     * @return array<string, mixed>
+     */
+    private function formatFacets(array $aggregations, array $facets): array
+    {
+        $formatted = [];
+
+        foreach ($facets as $facet) {
+            if ($facet instanceof MinMaxFacet && isset($aggregations[$facet->field . '_min']['value']) && isset($aggregations[$facet->field . '_max']['value'])) {
+                $formatted[$facet->field]['min'] = $aggregations[$facet->field . '_min']['value'];
+                $formatted[$facet->field]['max'] = $aggregations[$facet->field . '_max']['value'];
+                continue;
+            }
+            if ($facet instanceof CountFacet && isset($aggregations[$facet->field . '_count']['buckets'])) {
+                foreach ($aggregations[$facet->field . '_count']['buckets'] as $bucket) {
+                    $key = (string) ($bucket['key_as_string'] ?? $bucket['key']);
+                    $formatted[$facet->field]['count'][$key] = $bucket['doc_count'];
+                }
+            }
+        }
+
+        return $formatted;
     }
 }
