@@ -115,6 +115,9 @@ class OpensearchSchemaManagerTest extends AbstractSchemaManagerTestCase
             'categoryIds' => [
                 'type' => 'integer',
             ],
+            'code' => [
+                'type' => 'text',
+            ],
             'comments' => [
                 'properties' => [
                     'email' => [
